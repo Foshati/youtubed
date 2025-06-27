@@ -7,7 +7,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, Play, Clock, Eye, User, Loader2, AlertCircle } from "lucide-react";
+import { Download, Play, Clock, Eye, User, Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { VideoFormat, VideoInfo } from "@/lib/types";
 
 const VideoDownloader: React.FC = () => {
@@ -16,19 +16,32 @@ const VideoDownloader: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [error, setError] = useState<string>("");
+  const [success, setSuccess] = useState<string>("");
 
   // Function to clean and validate YouTube URL
   const cleanYouTubeUrl = (inputUrl: string): string => {
     try {
-      // Remove extra parameters and normalize URL
-      const url = new URL(inputUrl);
-      if (url.hostname.includes('youtube.com') || url.hostname.includes('youtu.be')) {
-        if (url.hostname.includes('youtu.be')) {
-          const videoId = url.pathname.slice(1);
+      inputUrl = inputUrl.trim();
+      
+      // Handle different YouTube URL formats
+      if (inputUrl.includes('youtu.be/')) {
+        const videoId = inputUrl.split('youtu.be/')[1].split('?')[0];
+        return `https://www.youtube.com/watch?v=${videoId}`;
+      }
+      
+      if (inputUrl.includes('youtube.com/watch')) {
+        const url = new URL(inputUrl);
+        const videoId = url.searchParams.get('v');
+        if (videoId) {
           return `https://www.youtube.com/watch?v=${videoId}`;
         }
-        return `https://www.youtube.com/watch?v=${url.searchParams.get('v')}`;
       }
+      
+      if (inputUrl.includes('youtube.com/') && !inputUrl.includes('watch?v=')) {
+        // Handle other YouTube formats
+        return inputUrl;
+      }
+      
       return inputUrl;
     } catch {
       return inputUrl;
@@ -44,6 +57,7 @@ const VideoDownloader: React.FC = () => {
     const cleanedUrl = cleanYouTubeUrl(url.trim());
     setLoading(true);
     setError("");
+    setSuccess("");
     setVideoInfo(null);
 
     try {
@@ -58,18 +72,16 @@ const VideoDownloader: React.FC = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status === 410) {
-          throw new Error("This video is not available or may be region-restricted. Please try another video.");
-        } else if (response.status === 403) {
-          throw new Error("Access denied. This video might be private or age-restricted.");
-        }
         throw new Error(data.error || "Failed to fetch video information");
       }
 
       setVideoInfo(data);
-      setUrl(cleanedUrl); // Update URL with cleaned version
+      setUrl(cleanedUrl);
+      setSuccess("Video information loaded successfully!");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const errorMsg = err instanceof Error ? err.message : "An error occurred";
+      setError(errorMsg);
+      console.error('Fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -80,6 +92,7 @@ const VideoDownloader: React.FC = () => {
     
     setDownloading(format.itag);
     setError("");
+    setSuccess("");
 
     try {
       const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&itag=${format.itag}`;
@@ -93,21 +106,17 @@ const VideoDownloader: React.FC = () => {
       link.click();
       document.body.removeChild(link);
 
-      // Show success message
+      setSuccess(`Started downloading: ${format.quality}`);
+      
+      // Reset downloading state after a delay
       setTimeout(() => {
-        if (downloading === format.itag) {
-          setDownloading(null);
-        }
+        setDownloading(null);
       }, 3000);
     } catch (err) {
       setError("Download failed. Please try again.");
       setDownloading(null);
+      console.error('Download error:', err);
     }
-  };
-
-  const formatFileSize = (size: string): string => {
-    if (size === "Unknown") return size;
-    return size;
   };
 
   const getQualityBadgeColor = (quality: string): string => {
@@ -115,7 +124,7 @@ const VideoDownloader: React.FC = () => {
       return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
     if (quality.includes("720p")) return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
     if (quality.includes("480p")) return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
-    if (quality.includes("kbps")) return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+    if (quality.includes("Audio")) return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
     return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300";
   };
 
@@ -163,11 +172,21 @@ const VideoDownloader: React.FC = () => {
                 )}
               </Button>
             </div>
+            
             {error && (
               <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
                   <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
+                </div>
+              </div>
+            )}
+            
+            {success && (
+              <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <p className="text-green-700 dark:text-green-300 text-sm">{success}</p>
                 </div>
               </div>
             )}
@@ -185,7 +204,7 @@ const VideoDownloader: React.FC = () => {
                     className="w-full rounded-lg shadow-md"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      target.src = '/api/placeholder/400/300';
+                      target.src = 'https://via.placeholder.com/400x300?text=No+Image';
                     }}
                   />
                 </div>
@@ -213,7 +232,7 @@ const VideoDownloader: React.FC = () => {
           </Card>
         )}
 
-        {videoInfo && (
+        {videoInfo && videoInfo.formats.length > 0 && (
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Available Download Formats</CardTitle>
@@ -239,7 +258,7 @@ const VideoDownloader: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                        <span>{format.size}</span>
+                        <span>{format.size || 'Unknown size'}</span>
                         <div className="flex gap-2">
                           {format.hasVideo && (
                             <span className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-2 py-1 rounded text-xs">

@@ -16,4 +16,5 @@ export interface VideoFormat {
     hasAudio: boolean;
     hasVideo: boolean;
     container: string;
+    url?: string; // Added for direct stream URL
 }

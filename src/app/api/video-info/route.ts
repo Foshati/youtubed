@@ -1,74 +1,90 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import ytdl from '@distube/ytdl-core';
+import { video_info, stream, yt_validate } from 'play-dl';
 import { VideoInfo, VideoFormat } from '@/lib/types';
 
 export async function POST(request: Request) {
   try {
     const { url } = await request.json();
 
-    if (!url || !ytdl.validateURL(url)) {
+    if (!url || !yt_validate(url)) {
       return NextResponse.json(
         { error: 'Invalid or missing YouTube URL' },
         { status: 400 }
       );
     }
 
-    const info = await ytdl.getInfo(url);
-    const formats = info.formats
-      .filter((format) => format.hasVideo || format.hasAudio)
-      .map((format): VideoFormat => ({
-        itag: format.itag,
-        quality: format.qualityLabel || `${format.audioBitrate}kbps`,
-        format: format.mimeType?.split(';')[0] || 'unknown',
-        size: format.contentLength
-          ? `${Math.round(parseInt(format.contentLength) / (1024 * 1024))} MB`
-          : 'Unknown',
-        hasAudio: format.hasAudio,
-        hasVideo: format.hasVideo,
-        container: format.container,
-      }))
-      .sort((a, b) => {
-        if (a.hasVideo && !b.hasVideo) return -1;
-        if (!a.hasVideo && b.hasVideo) return 1;
-        return 0;
+    // Get video info
+    const info = await video_info(url);
+    
+    if (!info || info.length === 0) {
+      return NextResponse.json(
+        { error: 'Video not found or not available' },
+        { status: 404 }
+      );
+    }
+
+    const videoDetails = info[0];
+
+    // Get stream info for formats
+    const streamInfo = await stream(url);
+    
+    const formats: VideoFormat[] = [];
+
+    // Add video formats
+    streamInfo.format.forEach((format, index) => {
+      formats.push({
+        itag: index + 1000, // Custom itag for video formats
+        quality: format.quality || 'Unknown',
+        format: 'video/mp4',
+        size: format.contentLength ? `${Math.round(parseInt(format.contentLength) / (1024 * 1024))} MB` : 'Unknown',
+        hasAudio: true,
+        hasVideo: true,
+        container: 'mp4',
+        url: format.url
       });
+    });
+
+    // Add audio formats
+    if (streamInfo.format.length > 0) {
+      formats.push({
+        itag: 2000, // Custom itag for audio only
+        quality: 'Audio Only',
+        format: 'audio/mp4',
+        size: 'Unknown',
+        hasAudio: true,
+        hasVideo: false,
+        container: 'mp4',
+        url: streamInfo.format[0].url // Use first format URL for audio
+      });
+    }
 
     const videoInfo: VideoInfo = {
-      title: info.videoDetails.title,
-      thumbnail:
-        info.videoDetails.thumbnails[info.videoDetails.thumbnails.length - 1]
-          .url,
-      duration: new Date(parseInt(info.videoDetails.lengthSeconds) * 1000)
-        .toISOString()
-        .substr(11, 8),
-      author: info.videoDetails.author.name,
-      viewCount: parseInt(info.videoDetails.viewCount).toLocaleString(),
-      formats,
+      title: videoDetails.video_details.title || 'Unknown Title',
+      thumbnail: videoDetails.video_details.thumbnails?.[0]?.url || '',
+      duration: formatDuration(videoDetails.video_details.durationInSec || 0),
+      author: videoDetails.video_details.channel?.name || 'Unknown',
+      viewCount: videoDetails.video_details.viewCount?.toLocaleString() || '0',
+      formats: formats.slice(0, 10) // Limit to 10 formats
     };
 
     return NextResponse.json(videoInfo);
   } catch (error) {
     console.error('Error fetching video info:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     
-    if (error instanceof Error && (error as any).statusCode === 410) {
-      return NextResponse.json({ 
-        error: 'Video is not available or region-restricted. Please try another video or check if the URL is correct.',
-        details: errorMessage 
-      }, { status: 410 });
-    }
-    
-    if (error instanceof Error && (error as any).statusCode === 403) {
-      return NextResponse.json({ 
-        error: 'Access denied. This video might be private or restricted.',
-        details: errorMessage 
-      }, { status: 403 });
-    }
-
     return NextResponse.json({ 
-      error: 'Failed to fetch video information. Please try again later.',
-      details: errorMessage 
+      error: 'Failed to fetch video information. Please check the URL and try again.',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
+}
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
