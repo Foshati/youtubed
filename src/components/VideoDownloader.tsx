@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-img-element */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // components/VideoDownloader.tsx
 "use client";
 
@@ -5,8 +7,8 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { VideoInfo, VideoFormat } from "@/pages/api/video-info";
 import { Download, Play, Clock, Eye, User, Loader2 } from "lucide-react";
+import { VideoFormat, VideoInfo } from "@/api/video-info/route";
 
 const VideoDownloader: React.FC = () => {
   const [url, setUrl] = useState<string>("");
