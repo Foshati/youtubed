@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { stream, video_info, yt_validate } from 'play-dl';
 
@@ -23,37 +24,44 @@ export async function GET(request: NextRequest) {
 
     // Get video info for title
     const info = await video_info(url);
-    if (!info || info.length === 0) {
+    if (!info) {
       return NextResponse.json({ error: "Video not found" }, { status: 404 });
     }
 
-    const videoDetails = info[0];
-    const title = videoDetails.video_details.title?.replace(/[^\w\s]/gi, "") || "video";
+    const title = (info as any).video_details?.title?.replace(/[^\w\s]/gi, "") || "video";
 
     // Get stream info
     const streamInfo = await stream(url);
-    
+
     let streamUrl: string;
     let filename: string;
     let contentType: string;
 
     const itagNum = parseInt(itag);
-    
+
     if (itagNum >= 2000) {
       // Audio only
-      if (streamInfo.format.length === 0) {
+      if (!(streamInfo as any).url) {
         return NextResponse.json({ error: "No audio stream available" }, { status: 404 });
       }
-      streamUrl = streamInfo.format[0].url;
+      streamUrl = (streamInfo as any).url;
       filename = `${title}.mp4`;
       contentType = "audio/mp4";
     } else {
       // Video format
       const formatIndex = itagNum - 1000;
-      if (!streamInfo.format[formatIndex]) {
+      const formats = (streamInfo as any).format;
+
+      if (!formats || !Array.isArray(formats) || !formats[formatIndex]) {
         return NextResponse.json({ error: "Format not found" }, { status: 404 });
       }
-      streamUrl = streamInfo.format[formatIndex].url;
+
+      const format = formats[formatIndex];
+      if (!format.url) {
+        return NextResponse.json({ error: "Stream URL not available" }, { status: 404 });
+      }
+
+      streamUrl = format.url;
       filename = `${title}.mp4`;
       contentType = "video/mp4";
     }
@@ -89,7 +97,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error("Download error:", error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: "Download failed. Please try again later.",
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
