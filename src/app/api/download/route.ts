@@ -1,6 +1,6 @@
 // app/api/download/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import ytdl from "ytdl-core";
+import ytdl from "@distube/ytdl-core";
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,8 +32,15 @@ export async function GET(request: NextRequest) {
     const title = info.videoDetails.title.replace(/[^\w\s]/gi, "");
     const filename = `${title}.${format.container}`;
 
-    // Create a readable stream
-    const stream = ytdl(url, { format });
+    // Create a readable stream with additional options
+    const stream = ytdl(url, { 
+      format,
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+      },
+    });
 
     // Convert the stream to a Response
     const readableStream = new ReadableStream({
@@ -57,10 +64,13 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Content-Type": format.mimeType || "video/mp4",
+        "Cache-Control": "no-cache",
       },
     });
   } catch (error) {
     console.error("Download error:", error);
-    return NextResponse.json({ error: "Download failed" }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Download failed. Please try again later." 
+    }, { status: 500 });
   }
 }

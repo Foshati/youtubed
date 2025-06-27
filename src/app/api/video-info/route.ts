@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import ytdl from 'ytdl-core';
+import ytdl from '@distube/ytdl-core';
 import { VideoInfo, VideoFormat } from '@/lib/types';
 
 export async function POST(request: Request) {
@@ -51,9 +51,24 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error fetching video info:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    
     if (error instanceof Error && (error as any).statusCode === 410) {
-        return NextResponse.json({ error: 'Failed to fetch video information. The ytdl-core library is likely outdated. Please update it by running: bun install ytdl-core@latest', details: errorMessage }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Video is not available or region-restricted. Please try another video or check if the URL is correct.',
+        details: errorMessage 
+      }, { status: 410 });
     }
-    return NextResponse.json({ error: 'Failed to fetch video information', details: errorMessage }, { status: 500 });
+    
+    if (error instanceof Error && (error as any).statusCode === 403) {
+      return NextResponse.json({ 
+        error: 'Access denied. This video might be private or restricted.',
+        details: errorMessage 
+      }, { status: 403 });
+    }
+
+    return NextResponse.json({ 
+      error: 'Failed to fetch video information. Please try again later.',
+      details: errorMessage 
+    }, { status: 500 });
   }
 }
